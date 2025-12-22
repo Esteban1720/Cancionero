@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Logo: Cancionero
+  - Bola circular con pentagrama (partitura) de fondo
+  - Silueta de saxofón y un grupo de teclas de piano (a la derecha)
+  - Estilo simple (monocromático + color acento) para que sea legible en distintos tamaños
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#4A148C"/>
+      <stop offset="100%" stop-color="#1E88E5"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Outer circle (ball) -->
+  <circle cx="256" cy="256" r="240" fill="url(#accent)" />
+
+  <!-- App slightly inner white circle for contrast -->
+  <circle cx="256" cy="256" r="210" fill="#ffffff" opacity="0.06" />
+
+  <!-- Staff / pentagrama - 5 lines, centered -->
+  <g stroke="#ffffff" stroke-width="6" stroke-linecap="round" opacity="0.85">
+    <line x1="64" y1="196" x2="448" y2="196" />
+    <line x1="64" y1="236" x2="448" y2="236" />
+    <line x1="64" y1="276" x2="448" y2="276" />
+    <line x1="64" y1="316" x2="448" y2="316" />
+    <line x1="64" y1="356" x2="448" y2="356" />
+  </g>
+
+  <!-- Saxophone silhouette (left/middle) - simple path -->
+  <g transform="translate(80,40) scale(0.9)" fill="#fff">
+    <path d="M170 108c-20 0-36 16-36 36v12c0 16-7 29-19 29-11 0-20-12-20-28v-5c0-33-26-60-59-60-32 0-59 27-59 60v78c0 33 27 60 59 60h79c60 0 108-48 108-108v-50c0-36-29-65-66-65z" fill="#fff" opacity="0.95"/>
+    <!-- mouth and bell stylization -->
+    <path d="M132 84c6-18 28-36 52-10 9 9 66 2 72 50 0 0 6 20-8 26-9 4-28 7-44-4-24-18-1-55-70-62-16-2-15-13-2-20z" fill="#fff" opacity="0.95"/>
+  </g>
+
+  <!-- Piano keys cluster at right -->
+  <g transform="translate(300,120) scale(0.8)">
+    <!-- keys rectangle background -->
+    <rect x="0" y="0" width="160" height="160" rx="12" fill="#fff" opacity="0.95"/>
+    <!-- white keys lines -->
+    <g stroke="#000" stroke-width="6">
+      <line x1="24" y1="10" x2="24" y2="150" />
+      <line x1="56" y1="10" x2="56" y2="150" />
+      <line x1="88" y1="10" x2="88" y2="150" />
+      <line x1="120" y1="10" x2="120" y2="150" />
+    </g>
+    <!-- black keys simplified (triangles) -->
+    <g fill="#000">
+      <rect x="36" y="10" width="8" height="62" rx="2" />
+      <rect x="68" y="10" width="8" height="62" rx="2" />
+      <rect x="100" y="10" width="8" height="62" rx="2" />
+    </g>
+  </g>
+
+  <!-- Musical note overlay to give a musical feeling -->
+  <g transform="translate(150,60) scale(0.9)" fill="#ffffff" opacity="0.95">
+    <!-- Note 1 -->
+    <path d="M260 230c0 13-9 23-22 23s-22-10-22-23 9-23 22-23 22 10 22 23z"/>
+    <rect x="245" y="160" width="8" height="76" rx="2" />
+    <!-- Note 2 (smaller) -->
+    <path d="M200 210c0 10-7 18-18 18s-18-8-18-18 7-18 18-18 18 8 18 18z" />
+    <rect x="188" y="135" width="6" height="75" rx="2" />
+  </g>
+
+  <!-- Final circle edge highlight -->
+  <circle cx="256" cy="256" r="236" fill="none" stroke-opacity="0.08" stroke="#fff" stroke-width="8" />
+
+  <!-- End of svg -->
+  </svg>
