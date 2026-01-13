@@ -72,4 +72,48 @@ class Cancion {
     final list = canciones.map((s) => s.aJson()).toList();
     return json.encode(list);
   }
+
+  /// Construye un modelo desde un documento de Firestore (mapa y id de documento)
+  factory Cancion.desdeFirestore(Map<String, dynamic> json, String id) {
+    // Robust parsing for subtitle lines (may be List or String or absent)
+    List<String>? subtitulosParsed;
+    final rawSub = json['subtitulos'] ?? json['subtitlesLines'];
+    if (rawSub is List) {
+      subtitulosParsed = rawSub
+          .map((e) => e?.toString() ?? '')
+          .where((s) => s.isNotEmpty)
+          .toList();
+      if (subtitulosParsed.isEmpty) subtitulosParsed = null;
+    } else if (rawSub is String) {
+      final lines = rawSub
+          .split('\n')
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+      subtitulosParsed = lines.isEmpty ? null : lines;
+    } else {
+      subtitulosParsed = null;
+    }
+
+    return Cancion(
+      id: id,
+      titulo: (json['titulo'] ?? json['title'] ?? '')?.toString() ?? '',
+      notas: (json['notas'] ?? json['notes'] ?? '')?.toString() ?? '',
+      subtitulo: (json['subtitulo'] ?? json['subtitle'])?.toString(),
+      subtitulosLineas: subtitulosParsed,
+      subtituloFontSize: (json['subtitleFontSize'] as num?)?.toDouble(),
+      tamanoLetra: (json['fontSize'] as num?)?.toDouble() ?? 22.0,
+    );
+  }
+
+  /// Convierte el modelo a un mapa adecuado para Firestore
+  Map<String, dynamic> toFirestoreMap() => {
+    'titulo': titulo,
+    'notas': notas,
+    'subtitulo': subtitulo,
+    'subtitulos': subtitulosLineas ?? [],
+    'subtitleFontSize': subtituloFontSize,
+    'fontSize': tamanoLetra,
+    // 'id' lo maneja el documento de Firestore
+  };
 }

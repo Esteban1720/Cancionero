@@ -11,10 +11,18 @@ class DetalleCancionVista extends StatefulWidget {
   final Cancion cancion;
   final ServicioAlmacenamiento almacenamiento;
 
+  /// Opcional: callback para eliminar desde cloud
+  final Future<void> Function(String)? onDelete;
+
+  /// Opcional: callback para crear/actualizar en cloud
+  final Future<void> Function(Cancion)? onCreateOrUpdate;
+
   const DetalleCancionVista({
     super.key,
     required this.cancion,
     required this.almacenamiento,
+    this.onDelete,
+    this.onCreateOrUpdate,
   });
 
   @override
@@ -52,9 +60,18 @@ class _DetalleCancionVistaState extends State<DetalleCancionVista> {
     );
     if (!mounted) return;
     if (confirmar == true) {
-      await widget.almacenamiento.eliminarCancion(widget.cancion.id);
-      if (!mounted) return;
-      Navigator.of(context).pop(true);
+      try {
+        if (widget.onDelete != null) {
+          await widget.onDelete!(widget.cancion.id);
+        } else {
+          await widget.almacenamiento.eliminarCancion(widget.cancion.id);
+        }
+        if (!mounted) return;
+        Navigator.of(context).pop(true);
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al eliminar: $e')));
+      }
     }
   }
 
@@ -98,16 +115,22 @@ class _DetalleCancionVistaState extends State<DetalleCancionVista> {
   }
 
   Future<void> _editarCancion() async {
-    final actualizado = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (c) => EditarCancionVista(
-          almacenamiento: widget.almacenamiento,
-          cancion: widget.cancion,
+    try {
+      final actualizado = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (c) => EditarCancionVista(
+            almacenamiento: widget.almacenamiento,
+            cancion: widget.cancion,
+            onUpdate: widget.onCreateOrUpdate,
+          ),
         ),
-      ),
-    );
-    if (!mounted) return;
-    if (actualizado == true) Navigator.of(context).pop(true);
+      );
+      if (!mounted) return;
+      if (actualizado == true) Navigator.of(context).pop(true);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al actualizar: $e')));
+    }
   }
 
   @override

@@ -1,0 +1,34 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "cancionero-7cd85",
+          "appId": "1:383332243396:android:5e13d66450cb9fea25f691",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "cancionero-7cd85",
+          "configurations": {
+            "android": "1:383332243396:android:5e13d66450cb9fea25f691",
+            "ios": "1:383332243396:ios:8180c3bc5282fcb525f691",
+            "macos": "1:383332243396:ios:8180c3bc5282fcb525f691",
+            "web": "1:383332243396:web:c1b8f8d51852681b25f691",
+            "windows": "1:383332243396:web:85be3070a84009fa25f691"
+          }
+        }
+      }
+    }
+  },
+  "emulators": {
+    "auth": {
+      "port": 9099
+    },
+    "firestore": {
+      "port": 8080,
+      "rules": "firestore.rules"
+    }
+  }
+}

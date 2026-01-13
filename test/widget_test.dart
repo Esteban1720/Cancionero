@@ -11,11 +11,12 @@ import 'package:flutter/material.dart';
 import 'package:cancionero/main.dart';
 
 void main() {
-  testWidgets('El FAB existe en la pantalla principal', (
+  testWidgets('La pantalla principal carga (Login)', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const CancioneroApp());
     await tester.pump();
-    expect(find.byType(FloatingActionButton), findsOneWidget);
+    // Verificar que la vista de login se renderiza correctamente
+    expect(find.text('Iniciar sesión'), findsWidgets);
   });
 }

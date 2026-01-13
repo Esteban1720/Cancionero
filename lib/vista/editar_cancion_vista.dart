@@ -10,10 +10,16 @@ class EditarCancionVista extends StatefulWidget {
   final ServicioAlmacenamiento almacenamiento;
   final Cancion? cancion;
 
+  /// Callbacks opcionales para persistencia en la nube
+  final Future<void> Function(Cancion)? onSave;
+  final Future<void> Function(Cancion)? onUpdate;
+
   const EditarCancionVista({
     super.key,
     required this.almacenamiento,
     this.cancion,
+    this.onSave,
+    this.onUpdate,
   });
 
   @override
@@ -114,11 +120,27 @@ class _EditarCancionVistaState extends State<EditarCancionVista> {
       subtitulosLineas: subtitlesLinesOrNull,
       tamanoLetra: widget.cancion?.tamanoLetra ?? 22.0,
     );
-    if (widget.cancion == null) {
-      await widget.almacenamiento.agregarCancion(cancion);
-    } else {
-      await widget.almacenamiento.actualizarCancion(cancion);
+    try {
+      if (widget.cancion == null) {
+        if (widget.onSave != null) {
+          await widget.onSave!(cancion);
+        } else {
+          await widget.almacenamiento.agregarCancion(cancion);
+        }
+      } else {
+        if (widget.onUpdate != null) {
+          await widget.onUpdate!(cancion);
+        } else {
+          await widget.almacenamiento.actualizarCancion(cancion);
+        }
+      }
+    } catch (e) {
+      if (!mounted) return;
+      // Mostrar mensaje amigable al usuario y no propagar la excepción al caller.
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al guardar la canción: $e')));
+      return;
     }
+
     if (!mounted) return;
     Navigator.of(context).pop(true);
   }
@@ -189,7 +211,7 @@ class _EditarCancionVistaState extends State<EditarCancionVista> {
     s = s.replaceAll(RegExp(r'\s*\-\s*\-\s*'), ' - ');
     if (hadTrailingNewline) {
       // Keep newline at the end but trim trailing spaces
-      s = s.trimRight() + '\n';
+      s = '${s.trimRight()}\n';
     } else {
       s = s.trim();
     }
@@ -268,7 +290,7 @@ class _EditarCancionVistaState extends State<EditarCancionVista> {
 
           if (token == ' ') {
             // Mantener compatibilidad: agregar espacio
-            _controladorNotas.text = raw + ' ';
+            _controladorNotas.text = '$raw ';
             // normalize to avoid accidental duplicates
             _controladorNotas.text = _normalizeNotasText(_controllerSafeText());
             _controladorNotas.selection = TextSelection.collapsed(
@@ -369,8 +391,9 @@ class _EditarCancionVistaState extends State<EditarCancionVista> {
             lines[lineIndex] = newLine;
             var nuevo = lines.join('\n');
             // Preserve trailing newline if original had one
-            if (textStr.endsWith('\n') && !nuevo.endsWith('\n'))
+            if (textStr.endsWith('\n') && !nuevo.endsWith('\n')) {
               nuevo = '$nuevo\n';
+            }
             // Keep trailing space to facilitate further insertions (like before)
             _controladorNotas.text = nuevo.isNotEmpty ? '$nuevo ' : '';
             // Move caret to after the replaced token in the new text
@@ -424,8 +447,9 @@ class _EditarCancionVistaState extends State<EditarCancionVista> {
             lines[lineIndex] = newLine;
             var nuevo = lines.join('\n');
             // Preserve trailing newline if original had one
-            if (textStr.endsWith('\n') && !nuevo.endsWith('\n'))
+            if (textStr.endsWith('\n') && !nuevo.endsWith('\n')) {
               nuevo = '$nuevo\n';
+            }
             // Keep trailing space to facilitate further insertions like before
             _controladorNotas.text = nuevo.isNotEmpty ? '$nuevo ' : '';
             _controladorNotas.selection = TextSelection.collapsed(

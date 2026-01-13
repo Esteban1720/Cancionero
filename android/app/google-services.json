@@ -1,0 +1,90 @@
+{
+  "project_info": {
+    "project_number": "383332243396",
+    "project_id": "cancionero-7cd85",
+    "storage_bucket": "cancionero-7cd85.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:383332243396:android:5e13d66450cb9fea25f691",
+        "android_client_info": {
+          "package_name": "com.cancionero.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "383332243396-60gbql4hkestj19ccv1sgc0e4a3skpsp.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.cancionero.app",
+            "certificate_hash": "5478a0b0669318d0fc116d181f258b693b886831"
+          }
+        },
+        {
+          "client_id": "383332243396-bab0vantsna96rokt3ssc13jbllgq8ac.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCdRgVyXSCXK6LhksTHJ0_kdQApnRB6V9E"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "383332243396-bab0vantsna96rokt3ssc13jbllgq8ac.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "383332243396-n0fv7db011fmmjjdgkqt3oj1782aml3o.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.cancionero"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:383332243396:android:e83475586dcc128d25f691",
+        "android_client_info": {
+          "package_name": "com.example.cancionero"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "383332243396-bab0vantsna96rokt3ssc13jbllgq8ac.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCdRgVyXSCXK6LhksTHJ0_kdQApnRB6V9E"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "383332243396-bab0vantsna96rokt3ssc13jbllgq8ac.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "383332243396-n0fv7db011fmmjjdgkqt3oj1782aml3o.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.cancionero"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

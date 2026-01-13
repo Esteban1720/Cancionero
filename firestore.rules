@@ -1,0 +1,158 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Colección usuarios
+    match /usuarios/{userId} {
+      // Validación básica del documento de usuario
+      function validUserDoc() {
+        return request.resource.data.keys().hasAll(['nombre','usuario']) &&
+               request.resource.data.nombre is string &&
+               request.resource.data.nombre.size() > 0 &&
+               request.resource.data.usuario is string &&
+               request.resource.data.usuario.size() > 0;
+      }
+
+      // Crear sólo por el propio usuario y con campos mínimos
+      allow create: if request.auth != null
+                    && request.auth.uid == userId
+                    && validUserDoc()
+                    // No permitir campos adicionales inesperados
+                    && request.resource.data.keys().hasOnly(['nombre','usuario','fotoUrl','meta']);
+
+      // Actualizar / borrar sólo por el propio usuario
+      allow update, delete: if request.auth != null && request.auth.uid == userId;
+
+      // Permitir lectura (get/list) para usuarios autenticados (necesario para búsqueda)
+      allow get, list: if request.auth != null;
+
+      // Subcolección canciones: sólo el propietario puede leer/escribir y validar campos mínimos
+      match /canciones/{cancionId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId
+          // Validación ligera de estructura si es create/update
+          && (request.method != 'create' || (
+               request.resource.data.titulo is string
+               && request.resource.data.titulo.size() > 0
+             ));
+      }
+
+      // Subcolección solicitudes de amistad (entrantes en el usuario)
+      // Nota: permitimos IDs de documento generados (no forzamos que el docId == fromUid).
+      // Validamos que el remitente real sea request.auth.uid mediante el campo `fromUid`.
+      match /solicitudes/{solId} {
+        // Crear: el remitente debe indicarse en el payload (fromUid) y coincidir con request.auth.uid.
+        // No se permite auto-solicitud (fromUid != userId), no se permite si ya son amigos,
+        // y no se permiten timestamps fijados por el cliente (enviado_en debe no existir).
+        allow create: if request.auth != null
+                      && request.resource.data.fromUid == request.auth.uid
+                      && request.resource.data.fromUid != userId
+                      && request.resource.data.fromNombre is string
+                      && request.resource.data.fromNombre.size() > 0
+                      && request.resource.data.keys().hasOnly(['fromUid','fromNombre','enviado_en'])
+                      && !(exists(/databases/$(database)/documents/usuarios/$(userId)/amigos/$(request.resource.data.fromUid)))
+                      // Permitimos 'enviado_en' sólo si viene como timestamp (ej. serverTimestamp)
+                      && ( !request.resource.data.keys().hasAny(['enviado_en']) || request.resource.data.enviado_en is timestamp );
+
+        // Lectura: sólo el destinatario (userId)
+        allow read: if request.auth != null && request.auth.uid == userId;
+
+        // Borrar: destinatario (al aceptar/rechazar) o remitente (para cancelar). Para delete
+        // usamos resource.data.fromUid (el valor existente en el documento a borrar).
+        allow delete: if request.auth != null && (request.auth.uid == userId || request.auth.uid == resource.data.fromUid);
+
+        // No permitir updates parciales en solicitudes
+        allow update: if false;
+      }
+
+      // Subcolección de amigos: restricciones para creación y borrado
+      match /amigos/{friendId} {
+        // Lectura: sólo el propio usuario puede listar sus amigos
+        allow read: if request.auth != null && request.auth.uid == userId;
+
+        // Crear condiciones:
+        // - El propio usuario puede agregar manualmente (si coincide uid)
+        // - El receptor de una solicitud (owner) puede aceptar y crear la entrada recíproca
+        //   siempre que exista la solicitud pendiente en su subcolección 'solicitudes'.
+        // - Si quien escribe es el friendId (remitente) y existe una solicitud previa del friend hacia userId,
+        //   también se permite (caso simétrico).
+        allow create: if request.auth != null && (
+          // creación manual por el propio usuario (crear su propia entrada de amigo)
+          (request.auth.uid == userId &&
+            request.resource.data.uid == friendId &&
+            request.resource.data.nombre is string &&
+            request.resource.data.nombre.size() > 0 &&
+            request.resource.data.keys().hasOnly(['uid','nombre','agregado_en']))
+          ||
+          // El receptor de la solicitud acepta: permite crear la entrada recíproca en el otro documento
+          // (actor != owner) si existe la solicitud pendiente en la subcolección del receptor
+          (request.auth.uid != userId &&
+            exists(/databases/$(database)/documents/usuarios/$(request.auth.uid)/solicitudes/$(userId)) &&
+            request.resource.data.uid == request.auth.uid &&
+            request.resource.data.nombre is string &&
+            request.resource.data.nombre.size() > 0 &&
+            request.resource.data.keys().hasOnly(['uid','nombre','agregado_en']))
+          ||
+          // creación recíproca por el que envió la solicitud originalmente (caso simétrico):
+          (request.auth.uid == friendId &&
+            exists(/databases/$(database)/documents/usuarios/$(request.auth.uid)/solicitudes/$(userId)) &&
+            request.resource.data.uid == friendId &&
+            request.resource.data.nombre is string &&
+            request.resource.data.nombre.size() > 0 &&
+            request.resource.data.keys().hasOnly(['uid','nombre','agregado_en']))
+        )
+        // Si se incluye 'agregado_en', debe ser timestamp (por seguridad)
+        && ( !request.resource.data.keys().hasAny(['agregado_en']) || request.resource.data.agregado_en is timestamp )
+        // Evitar duplicados: crear sólo si aún no existe la entrada (create sobre doc existente fallará)
+        ;
+
+        // Borrar: sólo el propio usuario puede borrar entradas en su lista de amigos
+        allow delete: if request.auth != null && request.auth.uid == userId;
+        allow update: if false;
+      }
+
+      // Subcolección de canciones compartidas con este usuario
+      match /compartidas/{sharedId} {
+        // Leer: sólo el destinatario lo puede leer
+        allow read: if request.auth != null && request.auth.uid == userId;
+
+        // Crear: quien comparte (request.auth.uid) debe:
+        // - ser distinto del destinatario,
+        // - declarar fromUid == request.auth.uid,
+        // - declarar un campo 'cancion' válido (map con 'titulo' al menos),
+        // - y existir como amigo del destinatario
+        allow create: if request.auth != null
+                      && request.auth.uid != userId
+                      && request.resource.data.fromUid == request.auth.uid
+                      && request.resource.data.cancion is map
+                      && request.resource.data.cancion.titulo is string
+                      && request.resource.data.cancion.titulo.size() > 0
+                      && request.resource.data.keys().hasAny(['fromUid','cancion','nota'])
+                      && exists(/databases/$(database)/documents/usuarios/$(userId)/amigos/$(request.auth.uid));
+
+        // El destinatario puede borrar la entrada compartida
+        allow delete: if request.auth != null && request.auth.uid == userId;
+
+        // Permitir que el destinatario actualice ciertos campos de la entrada compartida
+        // - Solo el destinatario (request.auth.uid == userId)
+        // - No se permite cambiar 'fromUid' ni 'fromNombre' ni 'compartido_en'
+        // - Solo se permiten cambios en 'cancion' (map con 'titulo') y en 'nota',
+        //   y opcionalmente establecer 'actualizado_en' como timestamp por seguridad.
+        allow update: if request.auth != null
+                       && request.auth.uid == userId
+                       && request.resource.data.cancion is map
+                       && request.resource.data.cancion.titulo is string
+                       && request.resource.data.cancion.titulo.size() > 0
+                       // No permitir modificar quien compartió
+                       && request.resource.data.fromUid == resource.data.fromUid
+                       && request.resource.data.fromNombre == resource.data.fromNombre
+                       // Solo permitir claves permitidas
+                       && request.resource.data.keys().hasOnly(['fromUid','fromNombre','cancion','nota','compartido_en','actualizado_en']);
+      }
+    }
+
+    // Bloquear todo lo demás por defecto
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
