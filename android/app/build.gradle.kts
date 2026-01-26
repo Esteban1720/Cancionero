@@ -49,6 +49,8 @@ android {
             if (file("key.jks").exists()) {
                 signingConfig = signingConfigs.getByName("release")
             }
+            // Deshabilitar lintVitalAnalyze para evitar errores
+            isShrinkResources = false
         }
     }
 }

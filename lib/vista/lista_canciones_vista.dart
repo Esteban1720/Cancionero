@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cancionero/modelo/cancion.dart';
 import 'package:cancionero/servicio/servicio_almacenamiento.dart';
+import 'package:cancionero/servicio/sync_service.dart';
 import 'dart:io';
 import 'dart:async';
 
@@ -26,9 +27,11 @@ class _ListaCancionesVistaState extends State<ListaCancionesVista> {
   final ServicioAlmacenamiento almacenamiento = ServicioAlmacenamiento();
   final FirestoreService _firestore = FirestoreService();
   final AuthService _authService = AuthService();
+  late final SyncService _syncService;
   late Future<List<Cancion>> _cancionesFuturo;
   Stream<List<Map<String, dynamic>>>? _cancionesFirestoreStream;
   Stream<List<Map<String, dynamic>>>? _compartidasFirestoreStream;
+  Stream<List<Map<String, dynamic>>>? _cancionesHibridStream;
   final TextEditingController _controladorBusqueda = TextEditingController();
   String _busqueda = '';
   bool _isLoggedIn = false;
@@ -41,24 +44,59 @@ class _ListaCancionesVistaState extends State<ListaCancionesVista> {
   StreamSubscription<List<Map<String, dynamic>>>? _solicitudesSub;
   // Flag para evitar usar el controlador tras el dispose (protección adicional)
   bool _disposed = false;
+  
+  // Para forzar actualización del stream cuando se agregan canciones locales
+  final ValueNotifier<int> _localDataUpdated = ValueNotifier<int>(0);
 
   @override
   void initState() {
     super.initState();
+    _syncService = SyncService();
     _cargarCanciones();
-    // Escuchar cambios de autenticación para alternar entre local y Firestore
+    
+    // Escuchar cambios de autenticación
     FirebaseAuth.instance.authStateChanges().listen((u) {
       if (!mounted) return;
       setState(() {
         _isLoggedIn = u != null;
         _usuarioNombre = u?.displayName ?? (u?.email?.split('@').first ?? null);
         if (_isLoggedIn) {
-          _cancionesFirestoreStream = _firestore.obtenerCancionesModelStream(
-            u!.uid,
-          );
+          // Cargar datos locales inmediatamente
+          _cargarCanciones();
+          
+          // En background, obtener datos de Firestore
+          _cancionesFirestoreStream = _firestore.obtenerCancionesModelStream(u!.uid);
           _compartidasFirestoreStream = _firestore.obtenerCancionesRecibidasStream(u.uid);
 
-          // Escuchar solicitudes entrantes para mostrar notificación/badge
+          // Escuchar Firestore y guardar en local automáticamente
+          _cancionesFirestoreStream?.listen(
+            (datosFirestore) async {
+              print('Recibido ${datosFirestore.length} canciones de Firestore, reemplazando locales...');
+              // Convertir datos de Firestore a objetos Cancion
+              final canciones = datosFirestore.map((m) {
+                final id = (m['id'] is String)
+                    ? (m['id'] as String)
+                    : (m['id']?.toString() ?? '');
+                return Cancion.desdeFirestore(m, id);
+              }).toList();
+              
+              // Reemplazar COMPLETAMENTE la lista local para evitar duplicados
+              // en lugar de agregar una a una
+              await almacenamiento.guardarCanciones(canciones);
+              
+              // Recargar la lista local para mostrar los cambios
+              if (mounted) {
+                setState(() {
+                  _cargarCanciones();
+                });
+              }
+            },
+            onError: (e) {
+              print('Error escuchando Firestore: $e');
+            },
+          );
+
+          // Escuchar solicitudes entrantes
           _solicitudesSub?.cancel();
           _solicitudesSub = _firestore
               .obtenerSolicitudesEntrantesStream(u.uid)
@@ -68,23 +106,31 @@ class _ListaCancionesVistaState extends State<ListaCancionesVista> {
                   _pendingRequests = lista.length;
                 });
               }, onError: (e) {
-                // Si las reglas deniegan la consulta, evitamos crash y dejamos 0 solicitudes pendientes.
                 if (!mounted) return;
                 setState(() {
                   _pendingRequests = 0;
                 });
-                // Opcional: log para diagnóstico
-                // ignore: avoid_print
-                print('Error listening solicitudes entrantes: $e');
               });
         } else {
           _cancionesFirestoreStream = null;
+          _cancionesHibridStream = null;
           _compartidasFirestoreStream = null;
           _cargarCanciones();
           _solicitudesSub?.cancel();
           _pendingRequests = 0;
         }
       });
+    });
+    
+    // Escuchar cambios de conectividad para recargar datos cuando vuelve internet
+    _syncService.connectivityService.connectivityStream.listen((isConnected) {
+      if (isConnected && _isLoggedIn && mounted) {
+        print('Internet volvió, recargando datos...');
+        // Recargar canciones locales en caso de que Firestore haya sincronizado
+        setState(() {
+          _cargarCanciones();
+        });
+      }
     });
   }
 
@@ -119,18 +165,28 @@ class _ListaCancionesVistaState extends State<ListaCancionesVista> {
           builder: (c) => EditarCancionVista(
             almacenamiento: almacenamiento,
             onSave: (cancion) async {
-              // Crear en Firestore para este usuario
-              await _firestore.crearCancion(
-                uid: user.uid,
-                cancion: cancion.toFirestoreMap(),
-              );
+              // Guardar localmente primero (siempre funciona)
+              await almacenamiento.agregarCancion(cancion);
+              
+              // Notificar que los datos locales cambiaron
+              _localDataUpdated.value++;
+              
+              // Si hay usuario autenticado, agregar a la cola de sincronización
+              if (user != null) {
+                await _syncService.addCreateOperation(
+                  cancionId: cancion.id,
+                  uid: user.uid,
+                  cancionData: cancion.toFirestoreMap(),
+                );
+              }
             },
           ),
         ),
       );
       if (!mounted) return;
       if (resultado == true) {
-        // Stream de Firestore se actualizará automáticamente
+        // Stream de Firestore se actualizará automáticamente o la lista local se refrescará
+        _refrescar();
       }
     } else {
       final resultado = await Navigator.of(context).push<bool>(
@@ -152,18 +208,36 @@ class _ListaCancionesVistaState extends State<ListaCancionesVista> {
           onDelete: fromFirestore
               ? (id) async {
                   final user = FirebaseAuth.instance.currentUser;
-                  if (user != null)
-                    await _firestore.eliminarCancion(uid: user.uid, id: id);
+                  if (user != null) {
+                    // Guardar localmente primero
+                    await almacenamiento.eliminarCancion(id);
+                    
+                    // Notificar cambios locales
+                    _localDataUpdated.value++;
+                    
+                    // Agregar a cola de sincronización
+                    await _syncService.addDeleteOperation(
+                      cancionId: id,
+                      uid: user.uid,
+                    );
+                  }
                 }
               : null,
           onCreateOrUpdate: fromFirestore
               ? (edited) async {
                   final user = FirebaseAuth.instance.currentUser;
                   if (user != null) {
-                    await _firestore.actualizarCancion(
+                    // Guardar localmente primero
+                    await almacenamiento.actualizarCancion(edited);
+                    
+                    // Notificar cambios locales
+                    _localDataUpdated.value++;
+                    
+                    // Agregar a cola de sincronización
+                    await _syncService.addUpdateOperation(
+                      cancionId: edited.id,
                       uid: user.uid,
-                      id: edited.id,
-                      cancion: edited.toFirestoreMap(),
+                      cancionData: edited.toFirestoreMap(),
                     );
                   }
                 }
@@ -175,6 +249,7 @@ class _ListaCancionesVistaState extends State<ListaCancionesVista> {
     if (resultado == true) {
       if (!fromFirestore) _refrescar();
       // Si viene de Firestore, el stream actualiza la lista automáticamente
+
     }
   }
 
@@ -401,6 +476,7 @@ class _ListaCancionesVistaState extends State<ListaCancionesVista> {
   }
 
   @override
+  @override
   void dispose() {
     // Cancelar suscripciones activas para evitar callbacks después del dispose
     _solicitudesSub?.cancel();
@@ -408,6 +484,10 @@ class _ListaCancionesVistaState extends State<ListaCancionesVista> {
     // Marcar disposed y dispose del controlador de búsqueda
     _disposed = true;
     _controladorBusqueda.dispose();
+    
+    // Liberar el SyncService
+    _syncService.dispose();
+    
     super.dispose();
   }
 
@@ -462,6 +542,45 @@ class _ListaCancionesVistaState extends State<ListaCancionesVista> {
                 ],
               ),
             ),
+          // Indicador de sincronización
+          if (_isLoggedIn)
+            ValueListenableBuilder<int>(
+              valueListenable: _syncService.pendingSyncCount,
+              builder: (context, count, _) {
+                if (count == 0) return const SizedBox.shrink();
+                return Tooltip(
+                  message: '$count operación(es) pendiente(s) de sincronización',
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                    child: Center(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.yellow.shade700,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            count.toString(),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
           if (_isLoggedIn)
             IconButton(
               icon: const Icon(Icons.logout),
@@ -478,19 +597,13 @@ class _ListaCancionesVistaState extends State<ListaCancionesVista> {
         ],
       ),
       body: _isLoggedIn
-          ? StreamBuilder<List<Map<String, dynamic>>>(
-              stream: _cancionesFirestoreStream,
+          ? FutureBuilder<List<Cancion>>(
+              future: _cancionesFuturo,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
-                final docs = snapshot.data ?? [];
-                final todasCanciones = docs.map((m) {
-                  final id = (m['id'] is String)
-                      ? (m['id'] as String)
-                      : (m['id']?.toString() ?? '');
-                  return Cancion.desdeFirestore(m, id);
-                }).toList();
+                final todasCanciones = snapshot.data ?? [];
                 final cancionesFiltradas = _busqueda.isEmpty
                     ? todasCanciones
                     : todasCanciones

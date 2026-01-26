@@ -87,16 +87,31 @@ class FirestoreService {
   }
 
   /// Crea una canción para un usuario (retorna el id del documento creado)
+  /// Si se proporciona un ID, lo usa; si no, Firestore genera uno nuevo
   Future<String> crearCancion({
     required String uid,
     required Map<String, dynamic> cancion,
+    String? documentId,
   }) async {
     final ref = _db.collection('usuarios').doc(uid).collection('canciones');
+    
+    // Si se proporciona documentId, usarlo para mantener consistencia entre local y Firestore
+    if (documentId != null && documentId.isNotEmpty) {
+      final docRef = ref.doc(documentId);
+      await docRef.set({
+        ...cancion,
+        'id': documentId,
+        'creado_en': FieldValue.serverTimestamp(),
+      });
+      return documentId;
+    }
+    
+    // Si no, dejar que Firestore genere el ID
     final docRef = await ref.add({
       ...cancion,
       'creado_en': FieldValue.serverTimestamp(),
     });
-    // Guardar id en el documento para fácil referencia si se desea
+    // Guardar id en el documento para fácil referencia
     await docRef.update({'id': docRef.id});
     return docRef.id;
   }

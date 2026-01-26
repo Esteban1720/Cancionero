@@ -30,12 +30,13 @@ class _EditarCancionVistaState extends State<EditarCancionVista> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _controladorTitulo;
   late final TextEditingController _controladorNotas;
-  late final TextEditingController _controladorSubtitulo;
-  bool _showSubtitulo = false;
   int? _selectedIndex;
 
   // Cursor/posición actual (línea donde se insertará la nota)
   int _cursorLineIndex = 0;
+
+  // Lista de índices de líneas seleccionadas para subtítulos (permite múltiples)
+  final List<int> _selectedSubtitleLineIndices = [0];
 
   // Subtítulos por línea
   final List<TextEditingController> _controladoresSubtitulosLineas = [];
@@ -49,10 +50,6 @@ class _EditarCancionVistaState extends State<EditarCancionVista> {
     _controladorNotas = TextEditingController(
       text: widget.cancion?.notas ?? '',
     );
-    _controladorSubtitulo = TextEditingController(
-      text: widget.cancion?.subtitulo ?? '',
-    );
-    _showSubtitulo = (widget.cancion?.subtitulo?.trim().isNotEmpty ?? false);
 
     // Inicializar controladores de subtítulos por línea a partir del modelo
     final initial = widget.cancion?.subtitulosLineas ?? [];
@@ -78,7 +75,6 @@ class _EditarCancionVistaState extends State<EditarCancionVista> {
   void dispose() {
     _controladorTitulo.dispose();
     _controladorNotas.dispose();
-    _controladorSubtitulo.dispose();
     for (var c in _controladoresSubtitulosLineas) {
       c.dispose();
     }
@@ -114,9 +110,6 @@ class _EditarCancionVistaState extends State<EditarCancionVista> {
       id: id,
       titulo: titulo,
       notas: notas,
-      subtitulo: _controladorSubtitulo.text.trim().isEmpty
-          ? null
-          : _controladorSubtitulo.text.trim(),
       subtitulosLineas: subtitlesLinesOrNull,
       tamanoLetra: widget.cancion?.tamanoLetra ?? 22.0,
     );
@@ -166,55 +159,82 @@ class _EditarCancionVistaState extends State<EditarCancionVista> {
     final lines = text.split('\n');
     return lines
         .map(
-          (line) => line
-              .trim()
-              .split(RegExp(r'\s*\-\s*'))
-              .where((t) => t.isNotEmpty)
-              .toList(),
+          (line) {
+            // Si la línea está vacía, devolver una lista vacía (pero seguir siendo una línea)
+            if (line.trim().isEmpty) return <String>[];
+            return line
+                .trim()
+                .split(RegExp(r'\s*\-\s*'))
+                .where((t) => t.isNotEmpty)
+                .toList();
+          },
         )
         .toList();
   }
 
   String _normalizeNotasText(String text) {
     if (text.trim().isEmpty) return '';
+    
+    // Count trailing newlines to preserve them
+    var trailingNewlineCount = 0;
+    for (var i = text.length - 1; i >= 0; i--) {
+      if (text[i] == '\n') {
+        trailingNewlineCount++;
+      } else {
+        break;
+      }
+    }
+    
     // Remove CR and tabs
     var s = text.replaceAll('\r', '').replaceAll('\t', ' ');
-    // Normalize separators sequences to single ' - '
-    s = s.replaceAll(RegExp(r'(\s*[\-;,]\s*)+'), ' - ');
-    // Trim spaces around newlines
-    s = s.replaceAll(RegExp(r'\s*\n\s*'), '\n');
-    // Remove trailing separators at end of lines
-    final lines = s.split('\n').map((line) {
+    
+    // Split by lines BEFORE any other processing to preserve line structure
+    final originalLines = s.split('\n');
+    
+    // Process each line individually
+    final processedLines = originalLines.map((line) {
       var l = line.trim();
-      // remove dangling '-' at end
+      if (l.isEmpty) {
+        // Keep empty lines as empty
+        return '';
+      }
+      // Remove CR and normalize separators
+      l = l.replaceAll(RegExp(r'(\s*[\-;,]\s*)+'), ' - ');
+      // Remove dangling separators
       l = l.replaceAll(RegExp(r'^(\s*[-,;]\s*)+'), '');
       l = l.replaceAll(RegExp(r'(\s*[-,;]\s*)+$'), '');
-      // collapse multiple spaces
+      // Collapse multiple spaces
       l = l.replaceAll(RegExp(r'\s+'), ' ');
       return l.trim();
     }).toList();
-    // Rejoin and ensure each token separation is ' - '
-    final processedLines = lines.map((line) {
-      if (line.isEmpty) return '';
-      final tokens = line
-          .split(RegExp(r'\s*\-\s*'))
-          .where((t) => t.isNotEmpty)
-          .toList();
-      return tokens.join(' - ');
-    }).toList();
-    // Preserve whether original text ended with a newline so we can
-    // keep that trailing newline after normalization (important to make
-    // "Salto" produce a real line break during editing).
-    final hadTrailingNewline = text.endsWith('\n');
-    s = processedLines.join('\n');
-    // Final cleanup: no duplicate hyphens
-    s = s.replaceAll(RegExp(r'\s*\-\s*\-\s*'), ' - ');
-    if (hadTrailingNewline) {
-      // Keep newline at the end but trim trailing spaces
-      s = '${s.trimRight()}\n';
-    } else {
-      s = s.trim();
+    
+    // Find first and last non-empty lines to trim only the extremes
+    var firstNonEmpty = 0;
+    var lastNonEmpty = processedLines.length - 1;
+    
+    while (firstNonEmpty <= lastNonEmpty && processedLines[firstNonEmpty].isEmpty) {
+      firstNonEmpty++;
     }
+    while (lastNonEmpty >= firstNonEmpty && processedLines[lastNonEmpty].isEmpty) {
+      lastNonEmpty--;
+    }
+    
+    // Extract lines from first to last non-empty (preserving all internal lines, even empty ones)
+    if (firstNonEmpty > lastNonEmpty) {
+      // All empty
+      return '';
+    }
+    
+    s = processedLines.sublist(firstNonEmpty, lastNonEmpty + 1).join('\n');
+    
+    // Remove duplicate hyphens
+    s = s.replaceAll(RegExp(r'\s*\-\s*\-\s*'), ' - ');
+    
+    // Restore trailing newlines exactly as they were in the original
+    if (trailingNewlineCount > 0) {
+      s = s + '\n' * trailingNewlineCount;
+    }
+    
     return s;
   }
 
@@ -445,6 +465,14 @@ class _EditarCancionVistaState extends State<EditarCancionVista> {
             newLine = newLine.replaceAll(RegExp(r'\s*[-,;]\s*\$'), '');
             newLine = newLine.trim();
             lines[lineIndex] = newLine;
+            
+            // Remove trailing empty lines one by one when we delete from the last line
+            // This ensures the line count (X/Y) stays accurate
+            while (lines.isNotEmpty && lineIndex >= lines.length - 1 && lines.last.trim().isEmpty) {
+              lines.removeLast();
+              lineIndex = lines.length - 1;
+            }
+            
             var nuevo = lines.join('\n');
             // Preserve trailing newline if original had one
             if (textStr.endsWith('\n') && !nuevo.endsWith('\n')) {
@@ -456,6 +484,8 @@ class _EditarCancionVistaState extends State<EditarCancionVista> {
               offset: _controladorNotas.text.length,
             );
             _selectedIndex = null;
+            // Recalculate which line the cursor is on
+            _updateCursorLine();
             setState(() {});
           }
         },
@@ -468,6 +498,7 @@ class _EditarCancionVistaState extends State<EditarCancionVista> {
           var lastIndex = lines.length - 1;
 
           // If last line is empty, remove it and continue on previous line
+          // This behaves like a real keyboard: backspace on empty line deletes the line
           if (lines[lastIndex].trim().isEmpty) {
             if (lastIndex == 0) {
               // nothing to remove
@@ -475,6 +506,19 @@ class _EditarCancionVistaState extends State<EditarCancionVista> {
             }
             lines.removeAt(lastIndex);
             lastIndex = lines.length - 1;
+            
+            // After removing the empty line, recursively handle the previous line
+            var nuevo = lines.join('\n');
+            if (hadTrailingNewline && !nuevo.endsWith('\n')) {
+              nuevo = '$nuevo\n';
+            }
+            _controladorNotas.text = nuevo.isNotEmpty ? '$nuevo ' : '';
+            _controladorNotas.selection = TextSelection.collapsed(
+              offset: _controladorNotas.text.length,
+            );
+            _updateCursorLine();
+            setState(() {});
+            return;
           }
 
           var lastLine = lines[lastIndex];
@@ -520,6 +564,7 @@ class _EditarCancionVistaState extends State<EditarCancionVista> {
           _controladorNotas.selection = TextSelection.collapsed(
             offset: _controladorNotas.text.length,
           );
+          _updateCursorLine();
           setState(() {});
         },
         onClear: () {
@@ -555,32 +600,6 @@ class _EditarCancionVistaState extends State<EditarCancionVista> {
                     : null,
               ),
               const SizedBox(height: 12),
-              // Botón para mostrar/añadir subtítulo (opcional)
-              Row(
-                children: [
-                  IconButton(
-                    onPressed: () =>
-                        setState(() => _showSubtitulo = !_showSubtitulo),
-                    icon: const Icon(Icons.subtitles),
-                    tooltip: 'Agregar subtítulo',
-                  ),
-                  TextButton(
-                    onPressed: () =>
-                        setState(() => _showSubtitulo = !_showSubtitulo),
-                    child: const Text('Subtítulo'),
-                  ),
-                ],
-              ),
-              if (_showSubtitulo)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12.0),
-                  child: TextFormField(
-                    controller: _controladorSubtitulo,
-                    decoration: const InputDecoration(
-                      labelText: 'Subtítulo (opcional) - aparece en detalle',
-                    ),
-                  ),
-                ),
               Expanded(
                 child: GestureDetector(
                   onTap: () =>
@@ -610,6 +629,9 @@ class _EditarCancionVistaState extends State<EditarCancionVista> {
                                       children: () {
                                         var flatIndex = 0;
                                         final widgets = <Widget>[];
+                                        final totalLines =
+                                            lines.isEmpty ? 1 : lines.length;
+
                                         for (
                                           var lineIndex = 0;
                                           lineIndex < lines.length;
@@ -707,32 +729,175 @@ class _EditarCancionVistaState extends State<EditarCancionVista> {
                                               ),
                                             ),
                                           );
-
-                                          if (_showSubtitulo) {
-                                            _ensureSubtitleControllers();
-                                            final controller =
-                                                lineIndex <
-                                                    _controladoresSubtitulosLineas
-                                                        .length
-                                                ? _controladoresSubtitulosLineas[lineIndex]
-                                                : TextEditingController();
-                                            widgets.add(
-                                              Padding(
-                                                padding: const EdgeInsets.only(
-                                                  bottom: 12.0,
-                                                  top: 6.0,
-                                                ),
-                                                child: TextFormField(
-                                                  controller: controller,
-                                                  decoration: InputDecoration(
-                                                    labelText:
-                                                        'Subtítulo línea ${lineIndex + 1} (opcional)',
-                                                  ),
-                                                ),
-                                              ),
-                                            );
-                                          }
                                         }
+
+                                        // Subtítulos por línea (múltiples secciones)
+                                        _ensureSubtitleControllers();
+                                        widgets.add(
+                                          Padding(
+                                            padding:
+                                                const EdgeInsets.only(top: 16.0),
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Row(
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment
+                                                          .spaceBetween,
+                                                  children: [
+                                                    const Text(
+                                                      'Subtítulos por línea:',
+                                                      style: TextStyle(
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                      ),
+                                                    ),
+                                                    IconButton(
+                                                      onPressed: () {
+                                                        setState(() {
+                                                          // Agregar nuevo índice si hay líneas disponibles
+                                                          if (_selectedSubtitleLineIndices
+                                                                  .length <
+                                                              totalLines) {
+                                                            _selectedSubtitleLineIndices
+                                                                .add(0);
+                                                          }
+                                                        });
+                                                      },
+                                                      icon: const Icon(
+                                                          Icons.add_circle),
+                                                      tooltip:
+                                                          'Agregar subtítulo',
+                                                    ),
+                                                  ],
+                                                ),
+                                                const SizedBox(height: 8),
+                                                // Generar una sección por cada subtítulo seleccionado
+                                                ..._selectedSubtitleLineIndices
+                                                    .asMap()
+                                                    .entries
+                                                    .map((entry) {
+                                                  final sectionIndex =
+                                                      entry.key;
+                                                  final selectedLineIndex =
+                                                      entry.value;
+
+                                                  return Padding(
+                                                    padding:
+                                                        const EdgeInsets.only(
+                                                            bottom: 12.0),
+                                                    child: Container(
+                                                      padding:
+                                                          const EdgeInsets.all(
+                                                              12.0),
+                                                      decoration:
+                                                          BoxDecoration(
+                                                        border: Border.all(
+                                                            color: Colors
+                                                                .grey[400]!),
+                                                        borderRadius:
+                                                            BorderRadius
+                                                                .circular(8),
+                                                      ),
+                                                      child: Column(
+                                                        crossAxisAlignment:
+                                                            CrossAxisAlignment
+                                                                .start,
+                                                        children: [
+                                                          Row(
+                                                            mainAxisAlignment:
+                                                                MainAxisAlignment
+                                                                    .spaceBetween,
+                                                            children: [
+                                                              Expanded(
+                                                                child:
+                                                                    DropdownButton<
+                                                                        int>(
+                                                                  isExpanded:
+                                                                      true,
+                                                                  value: selectedLineIndex
+                                                                      .clamp(
+                                                                          0,
+                                                                          totalLines -
+                                                                              1),
+                                                                  onChanged:
+                                                                      (value) {
+                                                                    if (value !=
+                                                                        null) {
+                                                                      setState(
+                                                                          () {
+                                                                        _selectedSubtitleLineIndices[
+                                                                            sectionIndex] =
+                                                                            value;
+                                                                      });
+                                                                    }
+                                                                  },
+                                                                  items: List
+                                                                      .generate(
+                                                                    totalLines,
+                                                                    (index) =>
+                                                                        DropdownMenuItem<
+                                                                            int>(
+                                                                      value:
+                                                                          index,
+                                                                      child: Text(
+                                                                        'Línea ${index + 1}',
+                                                                      ),
+                                                                    ),
+                                                                  ),
+                                                                ),
+                                                              ),
+                                                              IconButton(
+                                                                onPressed: () {
+                                                                  setState(() {
+                                                                    if (_selectedSubtitleLineIndices
+                                                                            .length >
+                                                                        1) {
+                                                                      _selectedSubtitleLineIndices
+                                                                          .removeAt(
+                                                                              sectionIndex);
+                                                                    }
+                                                                  });
+                                                                },
+                                                                icon: const Icon(
+                                                                  Icons
+                                                                      .remove_circle,
+                                                                  color: Colors
+                                                                      .red,
+                                                                ),
+                                                                tooltip:
+                                                                    'Eliminar',
+                                                              ),
+                                                            ],
+                                                          ),
+                                                          const SizedBox(
+                                                              height: 8),
+                                                          TextFormField(
+                                                            controller: selectedLineIndex <
+                                                                    _controladoresSubtitulosLineas
+                                                                        .length
+                                                                ? _controladoresSubtitulosLineas[
+                                                                    selectedLineIndex]
+                                                                : TextEditingController(),
+                                                            decoration:
+                                                                InputDecoration(
+                                                              labelText:
+                                                                  'Subtítulo para línea ${selectedLineIndex + 1}',
+                                                              hintText:
+                                                                  'Ej: Do – la - si',
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  );
+                                                }).toList(),
+                                              ],
+                                            ),
+                                          ),
+                                        );
+
                                         return widgets;
                                       }(),
                                     ),

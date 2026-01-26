@@ -213,25 +213,6 @@ class _DetalleCancionVistaState extends State<DetalleCancionVista> {
                 ),
               ),
               const SizedBox(height: 12),
-              // Subtítulo (opcional)
-              if ((widget.cancion.subtitulo ?? '').trim().isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12.0),
-                  child: Text(
-                    widget.cancion.subtitulo ?? '',
-                    style:
-                        Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Colors.white70,
-                          fontStyle: FontStyle.italic,
-                          fontSize: _tamanoSubtitulo,
-                        ) ??
-                        TextStyle(
-                          color: Colors.white70,
-                          fontStyle: FontStyle.italic,
-                          fontSize: _tamanoSubtitulo,
-                        ),
-                  ),
-                ),
               // Mostrar notas con saltos y un token por línea
               Builder(
                 builder: (c) {
@@ -254,23 +235,9 @@ class _DetalleCancionVistaState extends State<DetalleCancionVista> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              tokens.join(' - '),
-                              style:
-                                  Theme.of(
-                                    context,
-                                  ).textTheme.bodyLarge?.copyWith(
-                                    fontSize: _tamanoLetra,
-                                    height: 1.4,
-                                  ) ??
-                                  TextStyle(
-                                    fontSize: _tamanoLetra,
-                                    height: 1.4,
-                                  ),
-                            ),
                             if (subtitle != null && subtitle.trim().isNotEmpty)
                               Padding(
-                                padding: const EdgeInsets.only(top: 6.0),
+                                padding: const EdgeInsets.only(bottom: 6.0),
                                 child: Text(
                                   subtitle,
                                   style:
@@ -288,6 +255,20 @@ class _DetalleCancionVistaState extends State<DetalleCancionVista> {
                                       ),
                                 ),
                               ),
+                            Text(
+                              tokens.join(' - '),
+                              style:
+                                  Theme.of(
+                                    context,
+                                  ).textTheme.bodyLarge?.copyWith(
+                                    fontSize: _tamanoLetra,
+                                    height: 1.4,
+                                  ) ??
+                                  TextStyle(
+                                    fontSize: _tamanoLetra,
+                                    height: 1.4,
+                                  ),
+                            ),
                           ],
                         ),
                       );

@@ -36,7 +36,19 @@ class ServicioAlmacenamiento {
       if (!await file.exists()) return [];
       final content = await file.readAsString();
       if (content.trim().isEmpty) return [];
-      return Cancion.listaDesdeJson(content);
+      final canciones = Cancion.listaDesdeJson(content);
+      
+      // Eliminar duplicados por ID (mantener el primero)
+      final ids = <String>{};
+      final sinDuplicados = canciones.where((c) => ids.add(c.id)).toList();
+      
+      // Si se removieron duplicados, guardar la lista limpia
+      if (sinDuplicados.length < canciones.length) {
+        print('Removidos ${canciones.length - sinDuplicados.length} duplicados');
+        await guardarCanciones(sinDuplicados);
+      }
+      
+      return sinDuplicados;
     } catch (e) {
       return [];
     }
