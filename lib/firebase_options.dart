@@ -64,6 +64,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '383332243396',
     projectId: 'cancionero-7cd85',
     storageBucket: 'cancionero-7cd85.firebasestorage.app',
+    androidClientId: '383332243396-60gbql4hkestj19ccv1sgc0e4a3skpsp.apps.googleusercontent.com',
     iosClientId: '383332243396-n0fv7db011fmmjjdgkqt3oj1782aml3o.apps.googleusercontent.com',
     iosBundleId: 'com.example.cancionero',
   );
@@ -74,6 +75,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '383332243396',
     projectId: 'cancionero-7cd85',
     storageBucket: 'cancionero-7cd85.firebasestorage.app',
+    androidClientId: '383332243396-60gbql4hkestj19ccv1sgc0e4a3skpsp.apps.googleusercontent.com',
     iosClientId: '383332243396-n0fv7db011fmmjjdgkqt3oj1782aml3o.apps.googleusercontent.com',
     iosBundleId: 'com.example.cancionero',
   );
