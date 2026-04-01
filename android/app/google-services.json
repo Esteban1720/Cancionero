@@ -14,11 +14,11 @@
       },
       "oauth_client": [
         {
-          "client_id": "383332243396-60gbql4hkestj19ccv1sgc0e4a3skpsp.apps.googleusercontent.com",
+          "client_id": "383332243396-06nuh85lv298dvsmsa9llt8pjoqgrl4c.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "com.cancionero.app",
-            "certificate_hash": "5478a0b0669318d0fc116d181f258b693b886831"
+            "certificate_hash": "3c239e56f031440ef023aafce14b035fe11506ff"
           }
         },
         {

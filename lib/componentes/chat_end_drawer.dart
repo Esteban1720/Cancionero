@@ -44,32 +44,78 @@ class ChatEndDrawer extends StatelessWidget {
                     );
                   }
 
-                  return ListView(
-                    children: snapshot.data!.docs.map((doc) {
+                  final totalNoLeidos = snapshot.data!.docs.fold<int>(
+                    0,
+                    (total, doc) {
                       final amigo = doc.data() as Map<String, dynamic>;
-                      final foto = amigo['foto'] ?? '';
-                      final nombre = amigo['nombre'] ?? 'Amigo';
-                      final ultimoMensaje =
-                          amigo['ultimo_mensaje'] ?? 'Abre el chat';
+                      return total + ((amigo['mensajes_no_leidos'] ?? 0) as num).toInt();
+                    },
+                  );
 
-                      return ListTile(
-                        leading: AvatarSeguro(imageUrl: foto),
-                        title: Text(nombre),
-                        subtitle: Text(ultimoMensaje),
-                        trailing: const Icon(Icons.chat_bubble_outline),
-                        onTap: () {
-                          Navigator.pop(context);
-                          Navigator.of(context).pushNamed(
-                            '/chat',
-                            arguments: {
-                              'amigoUid': doc.id,
-                              'nombreAmigo': nombre,
-                              'fotoAmigo': foto,
-                            },
-                          );
-                        },
-                      );
-                    }).toList(),
+                  return ListView(
+                    children: [
+                      if (totalNoLeidos > 0)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                          child: Text(
+                            'Tienes $totalNoLeidos mensaje${totalNoLeidos == 1 ? '' : 's'} sin leer',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Color.fromARGB(255, 18, 87, 148),
+                            ),
+                          ),
+                        ),
+                      ...snapshot.data!.docs.map((doc) {
+                        final amigo = doc.data() as Map<String, dynamic>;
+                        final foto = amigo['foto'] ?? '';
+                        final nombre = amigo['nombre'] ?? 'Amigo';
+                        final ultimoMensaje =
+                            amigo['ultimo_mensaje'] ?? 'Abre el chat';
+                        final noLeidos =
+                            ((amigo['mensajes_no_leidos'] ?? 0) as num).toInt();
+
+                        return ListTile(
+                          leading: AvatarSeguro(imageUrl: foto),
+                          title: Text(nombre),
+                          subtitle: Text(ultimoMensaje),
+                          trailing: noLeidos > 0
+                              ? Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color.fromARGB(
+                                      255,
+                                      220,
+                                      53,
+                                      69,
+                                    ),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: Text(
+                                    '$noLeidos',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                )
+                              : const Icon(Icons.chat_bubble_outline),
+                          onTap: () {
+                            Navigator.pop(context);
+                            Navigator.of(context).pushNamed(
+                              '/chat',
+                              arguments: {
+                                'amigoUid': doc.id,
+                                'nombreAmigo': nombre,
+                                'fotoAmigo': foto,
+                              },
+                            );
+                          },
+                        );
+                      }),
+                    ],
                   );
                 },
               ),

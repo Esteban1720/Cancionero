@@ -30,11 +30,14 @@ class MenuDrawer extends StatelessWidget {
           child: ListView(
             padding: EdgeInsets.zero,
             children: [
-              DrawerHeader(
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(16, 28, 16, 20),
                 decoration: const BoxDecoration(
                   color: Color.fromARGB(255, 255, 225, 182),
                 ),
                 child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     GestureDetector(
@@ -42,13 +45,22 @@ class MenuDrawer extends StatelessWidget {
                         showDialog(
                           context: context,
                           builder: (_) => Dialog(
+                            insetPadding: const EdgeInsets.all(16),
                             child: Padding(
                               padding: const EdgeInsets.all(12),
-                              child: ImagenSegura(
-                                imageUrl: foto,
-                                height: 220,
-                                width: double.infinity,
-                                borderRadius: BorderRadius.circular(10),
+                              child: AspectRatio(
+                                aspectRatio: 1,
+                                child: InteractiveViewer(
+                                  minScale: 1,
+                                  maxScale: 4,
+                                  child: ImagenSegura(
+                                    imageUrl: foto,
+                                    width: double.infinity,
+                                    fit: BoxFit.contain,
+                                    borderRadius: BorderRadius.circular(10),
+                                    filterQuality: FilterQuality.high,
+                                  ),
+                                ),
                               ),
                             ),
                           ),
@@ -56,12 +68,14 @@ class MenuDrawer extends StatelessWidget {
                       },
                       child: AvatarSeguro(imageUrl: foto, radius: 35),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
                     Text(
                       usuario['user'] ?? 'Usuario',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: Colors.black,
-                        fontSize: 34,
+                        fontSize: 26,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -73,6 +87,14 @@ class MenuDrawer extends StatelessWidget {
                 title: const Text('Inicio'),
                 onTap: () {
                   Navigator.pop(context);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.library_music),
+                title: const Text('Mis Canciones'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.of(context).pushNamed('/mis-canciones');
                 },
               ),
               ListTile(
@@ -96,7 +118,6 @@ class MenuDrawer extends StatelessWidget {
                 title: const Text('Cerrar Sesion'),
                 onTap: () async {
                   Navigator.pop(context);
-                  await FirebaseAuth.instance.signOut();
 
                   if (!context.mounted) {
                     return;
@@ -105,6 +126,8 @@ class MenuDrawer extends StatelessWidget {
                   Navigator.of(
                     context,
                   ).pushNamedAndRemoveUntil('/inicio', (route) => false);
+
+                  await FirebaseAuth.instance.signOut();
                 },
               ),
             ],

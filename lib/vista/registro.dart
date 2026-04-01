@@ -65,6 +65,7 @@ class _RegistroState extends State<Registro> {
               offset: const Offset(0, -40),
               child: Card(
                 elevation: 2,
+                color: Colors.white,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(20),
                 ),
@@ -287,7 +288,10 @@ class _RegistroState extends State<Registro> {
         const SnackBar(content: Text('Usuario registrado correctamente')),
       );
 
-      Navigator.of(context).pushReplacementNamed('/dashboard');
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        '/dashboard',
+        (route) => false,
+      );
     } on FirebaseAuthException catch (e) {
       String message = 'Error al registrar usuario';
 

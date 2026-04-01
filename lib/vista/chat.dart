@@ -22,11 +22,53 @@ class ChatVista extends StatefulWidget {
 class _ChatVistaState extends State<ChatVista> {
   final TextEditingController mensajeController = TextEditingController();
   bool enviando = false;
+  String? miNombre;
+
+  @override
+  void initState() {
+    super.initState();
+    cargarMiNombre();
+    marcarMensajesComoLeidos();
+  }
 
   @override
   void dispose() {
     mensajeController.dispose();
     super.dispose();
+  }
+
+  Future<void> cargarMiNombre() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return;
+    }
+
+    final myDoc = await FirebaseFirestore.instance
+        .collection('usuarios')
+        .doc(user.uid)
+        .get();
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      miNombre = myDoc.data()?['user'] ?? 'Usuario';
+    });
+  }
+
+  Future<void> marcarMensajesComoLeidos() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return;
+    }
+
+    await FirebaseFirestore.instance
+        .collection('usuarios')
+        .doc(user.uid)
+        .collection('amigos')
+        .doc(widget.amigoUid)
+        .set({'mensajes_no_leidos': 0}, SetOptions(merge: true));
   }
 
   @override
@@ -39,7 +81,13 @@ class _ChatVistaState extends State<ChatVista> {
           children: [
             AvatarSeguro(imageUrl: widget.fotoAmigo),
             const SizedBox(width: 10),
-            Text(widget.nombreAmigo),
+            Expanded(
+              child: Text(
+                widget.nombreAmigo,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ],
         ),
       ),
@@ -54,15 +102,16 @@ class _ChatVistaState extends State<ChatVista> {
                   .orderBy('fecha')
                   .snapshots(),
               builder: (context, snapshot) {
-                if (!snapshot.hasData) {
+                if (snapshot.connectionState == ConnectionState.waiting &&
+                    !snapshot.hasData) {
                   return const Center(child: CircularProgressIndicator());
                 }
 
-                final mensajes = snapshot.data!.docs;
+                final mensajes = snapshot.data?.docs ?? const [];
 
                 if (mensajes.isEmpty) {
                   return const Center(
-                    child: Text('Todavia no hay mensajes en este chat'),
+                    child: Text('No hay mensajes en este chat'),
                   );
                 }
 
@@ -133,15 +182,11 @@ class _ChatVistaState extends State<ChatVista> {
       return;
     }
 
+    mensajeController.clear();
+
     setState(() {
       enviando = true;
     });
-
-    final myDoc = await FirebaseFirestore.instance
-        .collection('usuarios')
-        .doc(user.uid)
-        .get();
-    final misDatos = myDoc.data() ?? {};
     final idChat = chatId(user.uid, widget.amigoUid);
 
     await FirebaseFirestore.instance.collection('chats').doc(idChat).set({
@@ -157,7 +202,7 @@ class _ChatVistaState extends State<ChatVista> {
         .add({
           'mensaje': texto,
           'emisor_uid': user.uid,
-          'emisor_nombre': misDatos['user'] ?? 'Usuario',
+          'emisor_nombre': miNombre ?? user.displayName ?? 'Usuario',
           'fecha': FieldValue.serverTimestamp(),
         });
 
@@ -166,16 +211,20 @@ class _ChatVistaState extends State<ChatVista> {
         .doc(user.uid)
         .collection('amigos')
         .doc(widget.amigoUid)
-        .set({'ultimo_mensaje': texto}, SetOptions(merge: true));
+        .set({
+          'ultimo_mensaje': texto,
+          'mensajes_no_leidos': 0,
+        }, SetOptions(merge: true));
 
     await FirebaseFirestore.instance
         .collection('usuarios')
         .doc(widget.amigoUid)
         .collection('amigos')
         .doc(user.uid)
-        .set({'ultimo_mensaje': texto}, SetOptions(merge: true));
-
-    mensajeController.clear();
+        .set({
+          'ultimo_mensaje': texto,
+          'mensajes_no_leidos': FieldValue.increment(1),
+        }, SetOptions(merge: true));
 
     if (mounted) {
       setState(() {

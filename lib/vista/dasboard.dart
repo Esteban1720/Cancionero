@@ -18,6 +18,8 @@ class _DasboardState extends State<Dasboard> {
   bool buscando = false;
   final TextEditingController buscarController = TextEditingController();
   List<QueryDocumentSnapshot> resultadosBusqueda = [];
+  final Map<String, String> estadosRelacionCache = {};
+  final Set<String> solicitudesEnProceso = {};
 
   @override
   void dispose() {
@@ -44,10 +46,61 @@ class _DasboardState extends State<Dasboard> {
         actions: [
           Builder(
             builder: (context) {
-              return IconButton(
-                icon: const Icon(Icons.chat),
-                onPressed: () {
-                  Scaffold.of(context).openEndDrawer();
+              return StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('usuarios')
+                    .doc(user.uid)
+                    .collection('amigos')
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  final totalNoLeidos = (snapshot.data?.docs ?? []).fold<int>(
+                    0,
+                    (total, doc) {
+                      final amigo = doc.data() as Map<String, dynamic>;
+                      return total +
+                          ((amigo['mensajes_no_leidos'] ?? 0) as num).toInt();
+                    },
+                  );
+
+                  return IconButton(
+                    onPressed: () {
+                      Scaffold.of(context).openEndDrawer();
+                    },
+                    icon: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        const Icon(Icons.chat),
+                        if (totalNoLeidos > 0)
+                          Positioned(
+                            right: -6,
+                            top: -6,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              constraints: const BoxConstraints(
+                                minWidth: 18,
+                                minHeight: 18,
+                              ),
+                              decoration: const BoxDecoration(
+                                color: Color.fromARGB(255, 220, 53, 69),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Text(
+                                totalNoLeidos > 99 ? '99+' : '$totalNoLeidos',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  );
                 },
               );
             },
@@ -140,7 +193,8 @@ class _DasboardState extends State<Dasboard> {
 
             final publicaciones = publicacionesSnapshot.data!.docs.where((doc) {
               final data = doc.data() as Map<String, dynamic>;
-              return amigosIds.contains(data['uid']);
+              final autorUid = data['uid'];
+              return autorUid == uid || amigosIds.contains(autorUid);
             }).toList();
 
             return ListView(
@@ -157,7 +211,7 @@ class _DasboardState extends State<Dasboard> {
                   ),
                 ),
                 const SizedBox(height: 10),
-                if (amigosIds.isEmpty)
+                if (amigosIds.isEmpty && publicaciones.isEmpty)
                   const Card(
                     child: Padding(
                       padding: EdgeInsets.all(16),
@@ -205,11 +259,16 @@ class _DasboardState extends State<Dasboard> {
           if (archivoUrl.isNotEmpty && tipo == 'Foto')
             Padding(
               padding: const EdgeInsets.all(12),
-              child: ImagenSegura(
-                imageUrl: archivoUrl,
-                height: 220,
-                width: double.infinity,
-                borderRadius: BorderRadius.circular(12),
+              child: GestureDetector(
+                onTap: () {
+                  abrirImagenGrande(archivoUrl);
+                },
+                child: ImagenSegura(
+                  imageUrl: archivoUrl,
+                  height: 220,
+                  width: double.infinity,
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
             ),
           if (archivoUrl.isNotEmpty && tipo == 'Video')
@@ -550,10 +609,35 @@ class _DasboardState extends State<Dasboard> {
     String otherUid,
     String email,
   ) {
+    final estadoCache = estadosRelacionCache[otherUid];
+    if (estadoCache != null) {
+      if (estadoCache == 'amigo') {
+        return const Text('Ya es tu amigo');
+      }
+      if (estadoCache == 'enviada') {
+        return const Text('Solicitud pendiente');
+      }
+      if (estadoCache == 'recibida') {
+        return const Text('Te envio una solicitud');
+      }
+      return Text(email);
+    }
+
     return FutureBuilder<String>(
       future: obtenerEstadoRelacion(currentUid, otherUid),
       builder: (context, snapshot) {
         final estado = snapshot.data ?? 'cargando';
+
+        if (snapshot.hasData && estadosRelacionCache[otherUid] != estado) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) {
+              return;
+            }
+            setState(() {
+              estadosRelacionCache[otherUid] = estado;
+            });
+          });
+        }
 
         if (estado == 'amigo') {
           return const Text('Ya es tu amigo');
@@ -575,10 +659,53 @@ class _DasboardState extends State<Dasboard> {
     String otherUid,
     Map<String, dynamic> usuario,
   ) {
+    if (solicitudesEnProceso.contains(otherUid)) {
+      return const SizedBox(
+        width: 20,
+        height: 20,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
+    }
+
+    final estadoCache = estadosRelacionCache[otherUid];
+    if (estadoCache != null) {
+      if (estadoCache == 'amigo') {
+        return const Text('Amigo');
+      }
+
+      if (estadoCache == 'enviada') {
+        return const Text('Pendiente');
+      }
+
+      if (estadoCache == 'recibida') {
+        return TextButton(
+          onPressed: () {
+            aceptarSolicitud(currentUid, otherUid, {
+              'nombre': usuario['user'] ?? 'Usuario',
+              'email': usuario['email'] ?? '',
+              'foto': usuario['foto'] ?? '',
+            });
+          },
+          child: const Text('Aceptar'),
+        );
+      }
+    }
+
     return FutureBuilder<String>(
       future: obtenerEstadoRelacion(currentUid, otherUid),
       builder: (context, snapshot) {
         final estado = snapshot.data ?? 'cargando';
+
+        if (snapshot.hasData && estadosRelacionCache[otherUid] != estado) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) {
+              return;
+            }
+            setState(() {
+              estadosRelacionCache[otherUid] = estado;
+            });
+          });
+        }
 
         if (estado == 'cargando') {
           return const SizedBox(
@@ -639,10 +766,41 @@ class _DasboardState extends State<Dasboard> {
         .where('user_lower', isLessThanOrEqualTo: '$texto\uf8ff')
         .get();
 
+    final resultados = query.docs.where((doc) => doc.id != currentUid).toList();
+
+    final amigosSnapshot = await FirebaseFirestore.instance
+        .collection('usuarios')
+        .doc(currentUid)
+        .collection('amigos')
+        .get();
+    final enviadasSnapshot = await FirebaseFirestore.instance
+        .collection('usuarios')
+        .doc(currentUid)
+        .collection('solicitudes_enviadas')
+        .get();
+    final recibidasSnapshot = await FirebaseFirestore.instance
+        .collection('usuarios')
+        .doc(currentUid)
+        .collection('solicitudes_recibidas')
+        .get();
+
+    final amigosIds = amigosSnapshot.docs.map((doc) => doc.id).toSet();
+    final enviadasIds = enviadasSnapshot.docs.map((doc) => doc.id).toSet();
+    final recibidasIds = recibidasSnapshot.docs.map((doc) => doc.id).toSet();
+
     setState(() {
-      resultadosBusqueda = query.docs
-          .where((doc) => doc.id != currentUid)
-          .toList();
+      resultadosBusqueda = resultados;
+      for (final doc in resultados) {
+        if (amigosIds.contains(doc.id)) {
+          estadosRelacionCache[doc.id] = 'amigo';
+        } else if (enviadasIds.contains(doc.id)) {
+          estadosRelacionCache[doc.id] = 'enviada';
+        } else if (recibidasIds.contains(doc.id)) {
+          estadosRelacionCache[doc.id] = 'recibida';
+        } else {
+          estadosRelacionCache[doc.id] = 'ninguna';
+        }
+      }
       buscando = false;
     });
   }
@@ -696,8 +854,8 @@ class _DasboardState extends State<Dasboard> {
       return;
     }
 
-    final estado = await obtenerEstadoRelacion(user.uid, amigoUid);
-    if (estado != 'ninguna') {
+    final estadoActual = estadosRelacionCache[amigoUid];
+    if (estadoActual != null && estadoActual != 'ninguna') {
       if (!mounted) {
         return;
       }
@@ -708,6 +866,11 @@ class _DasboardState extends State<Dasboard> {
       );
       return;
     }
+
+    setState(() {
+      solicitudesEnProceso.add(amigoUid);
+      estadosRelacionCache[amigoUid] = 'enviada';
+    });
 
     final miDoc = await FirebaseFirestore.instance
         .collection('usuarios')
@@ -741,7 +904,14 @@ class _DasboardState extends State<Dasboard> {
           'fecha': FieldValue.serverTimestamp(),
         });
 
-    setState(() {});
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      solicitudesEnProceso.remove(amigoUid);
+      estadosRelacionCache[amigoUid] = 'enviada';
+    });
   }
 
   Future<void> toggleLike(String publicacionId, String currentUid) async {
@@ -764,96 +934,17 @@ class _DasboardState extends State<Dasboard> {
   }
 
   Future<void> abrirComentarios(String publicacionId, String currentUid) async {
-    final comentarioController = TextEditingController();
-
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       builder: (context) {
-        return Padding(
-          padding: EdgeInsets.only(
-            left: 16,
-            right: 16,
-            top: 16,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-          ),
-          child: SizedBox(
-            height: 420,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Comentarios',
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 12),
-                Expanded(
-                  child: StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection('publicaciones')
-                        .doc(publicacionId)
-                        .collection('comentarios')
-                        .orderBy('fecha', descending: true)
-                        .snapshots(),
-                    builder: (context, snapshot) {
-                      if (!snapshot.hasData) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
-
-                      if (snapshot.data!.docs.isEmpty) {
-                        return const Center(
-                          child: Text('Todavia no hay comentarios'),
-                        );
-                      }
-
-                      return ListView(
-                        children: snapshot.data!.docs.map((doc) {
-                          final comentario = doc.data() as Map<String, dynamic>;
-                          final foto = comentario['foto_usuario'] ?? '';
-
-                          return ListTile(
-                            leading: AvatarSeguro(imageUrl: foto),
-                            title: Text(comentario['nombre'] ?? 'Usuario'),
-                            subtitle: Text(comentario['comentario'] ?? ''),
-                          );
-                        }).toList(),
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: comentarioController,
-                        decoration: const InputDecoration(
-                          hintText: 'Escribe un comentario',
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    ElevatedButton(
-                      onPressed: () {
-                        agregarComentario(
-                          publicacionId,
-                          currentUid,
-                          comentarioController.text.trim(),
-                        );
-                        comentarioController.clear();
-                      },
-                      child: const Text('Enviar'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
+        return _ComentariosSheet(
+          publicacionId: publicacionId,
+          currentUid: currentUid,
+          onEnviar: agregarComentario,
         );
       },
     );
-
-    comentarioController.dispose();
   }
 
   Future<void> agregarComentario(
@@ -884,6 +975,31 @@ class _DasboardState extends State<Dasboard> {
         });
   }
 
+  Future<void> abrirImagenGrande(String imageUrl) async {
+    await showDialog<void>(
+      context: context,
+      builder: (_) => Dialog(
+        insetPadding: const EdgeInsets.all(16),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: AspectRatio(
+            aspectRatio: 1,
+            child: InteractiveViewer(
+              minScale: 1,
+              maxScale: 4,
+              child: ImagenSegura(
+                imageUrl: imageUrl,
+                width: double.infinity,
+                fit: BoxFit.contain,
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> aceptarSolicitud(
     String currentUid,
     String solicitudUid,
@@ -906,6 +1022,7 @@ class _DasboardState extends State<Dasboard> {
           'foto': solicitud['foto'] ?? '',
           'email': solicitud['email'] ?? '',
           'ultimo_mensaje': '',
+          'mensajes_no_leidos': 0,
           'fecha': FieldValue.serverTimestamp(),
         });
 
@@ -920,6 +1037,7 @@ class _DasboardState extends State<Dasboard> {
           'foto': misDatos['foto'] ?? '',
           'email': misDatos['email'] ?? '',
           'ultimo_mensaje': '',
+          'mensajes_no_leidos': 0,
           'fecha': FieldValue.serverTimestamp(),
         });
 
@@ -937,7 +1055,10 @@ class _DasboardState extends State<Dasboard> {
         .doc(currentUid)
         .delete();
 
-    setState(() {});
+    setState(() {
+      estadosRelacionCache[solicitudUid] = 'amigo';
+      solicitudesEnProceso.remove(solicitudUid);
+    });
   }
 
   Future<void> eliminarSolicitud(String currentUid, String solicitudUid) async {
@@ -955,7 +1076,10 @@ class _DasboardState extends State<Dasboard> {
         .doc(currentUid)
         .delete();
 
-    setState(() {});
+    setState(() {
+      estadosRelacionCache[solicitudUid] = 'ninguna';
+      solicitudesEnProceso.remove(solicitudUid);
+    });
   }
 
   Future<void> cancelarSolicitudEnviada(
@@ -976,7 +1100,10 @@ class _DasboardState extends State<Dasboard> {
         .doc(currentUid)
         .delete();
 
-    setState(() {});
+    setState(() {
+      estadosRelacionCache[amigoUid] = 'ninguna';
+      solicitudesEnProceso.remove(amigoUid);
+    });
   }
 
   Future<void> eliminarAmigo(String currentUid, String amigoUid) async {
@@ -994,6 +1121,145 @@ class _DasboardState extends State<Dasboard> {
         .doc(currentUid)
         .delete();
 
-    setState(() {});
+    setState(() {
+      estadosRelacionCache[amigoUid] = 'ninguna';
+      solicitudesEnProceso.remove(amigoUid);
+    });
+  }
+}
+
+class _ComentariosSheet extends StatefulWidget {
+  const _ComentariosSheet({
+    required this.publicacionId,
+    required this.currentUid,
+    required this.onEnviar,
+  });
+
+  final String publicacionId;
+  final String currentUid;
+  final Future<void> Function(String, String, String) onEnviar;
+
+  @override
+  State<_ComentariosSheet> createState() => _ComentariosSheetState();
+}
+
+class _ComentariosSheetState extends State<_ComentariosSheet> {
+  final TextEditingController comentarioController = TextEditingController();
+  bool enviando = false;
+
+  @override
+  void dispose() {
+    comentarioController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 16,
+        top: 16,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+      ),
+      child: SizedBox(
+        height: 420,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Comentarios',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('publicaciones')
+                    .doc(widget.publicacionId)
+                    .collection('comentarios')
+                    .orderBy('fecha', descending: true)
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+
+                  if (snapshot.data!.docs.isEmpty) {
+                    return const Center(
+                      child: Text('Todavia no hay comentarios'),
+                    );
+                  }
+
+                  return ListView(
+                    children: snapshot.data!.docs.map((doc) {
+                      final comentario = doc.data() as Map<String, dynamic>;
+                      final foto = comentario['foto_usuario'] ?? '';
+
+                      return ListTile(
+                        leading: AvatarSeguro(imageUrl: foto),
+                        title: Text(comentario['nombre'] ?? 'Usuario'),
+                        subtitle: Text(comentario['comentario'] ?? ''),
+                      );
+                    }).toList(),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: comentarioController,
+                    decoration: const InputDecoration(
+                      hintText: 'Escribe un comentario',
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: enviando
+                      ? null
+                      : () async {
+                          final texto = comentarioController.text.trim();
+                          if (texto.isEmpty) {
+                            return;
+                          }
+
+                          setState(() {
+                            enviando = true;
+                          });
+
+                          await widget.onEnviar(
+                            widget.publicacionId,
+                            widget.currentUid,
+                            texto,
+                          );
+
+                          if (!mounted) {
+                            return;
+                          }
+
+                          comentarioController.clear();
+
+                          setState(() {
+                            enviando = false;
+                          });
+                        },
+                  child: enviando
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Enviar'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

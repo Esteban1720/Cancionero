@@ -18,6 +18,7 @@ class AvatarSeguro extends StatelessWidget {
                 width: radius * 2,
                 height: radius * 2,
                 fit: BoxFit.cover,
+                filterQuality: FilterQuality.high,
                 errorBuilder: (context, error, stackTrace) {
                   return Icon(Icons.person, size: radius);
                 },
@@ -34,6 +35,7 @@ class ImagenSegura extends StatelessWidget {
   final double? width;
   final BoxFit fit;
   final BorderRadius? borderRadius;
+  final FilterQuality filterQuality;
 
   const ImagenSegura({
     super.key,
@@ -42,6 +44,7 @@ class ImagenSegura extends StatelessWidget {
     this.width,
     this.fit = BoxFit.cover,
     this.borderRadius,
+    this.filterQuality = FilterQuality.high,
   });
 
   @override
@@ -52,6 +55,7 @@ class ImagenSegura extends StatelessWidget {
             height: height,
             width: width,
             fit: fit,
+            filterQuality: filterQuality,
             errorBuilder: (context, error, stackTrace) {
               return contenedorError();
             },

@@ -92,8 +92,19 @@ class _PerfilVistaState extends State<PerfilVista> {
                           const SizedBox(height: 10),
                           Text('Edad: ${edad ?? 'Sin registrar'}'),
                           const SizedBox(height: 6),
-                          Text(
-                            'Fecha de nacimiento: ${textoFecha(fechaNacimiento)}',
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  'Fecha de nacimiento: ${textoFecha(fechaNacimiento)}',
+                                ),
+                              ),
+                              TextButton.icon(
+                                onPressed: seleccionarFechaNacimiento,
+                                icon: const Icon(Icons.edit_calendar),
+                                label: const Text('Cambiar'),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -183,11 +194,16 @@ class _PerfilVistaState extends State<PerfilVista> {
                                 if (archivoUrl.isNotEmpty && tipo == 'Foto')
                                   Padding(
                                     padding: const EdgeInsets.all(12),
-                                    child: ImagenSegura(
-                                      imageUrl: archivoUrl,
-                                      height: 180,
-                                      width: double.infinity,
-                                      borderRadius: BorderRadius.circular(12),
+                                    child: GestureDetector(
+                                      onTap: () {
+                                        abrirImagenGrande(archivoUrl);
+                                      },
+                                      child: ImagenSegura(
+                                        imageUrl: archivoUrl,
+                                        height: 180,
+                                        width: double.infinity,
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
                                     ),
                                   ),
                                 if (archivoUrl.isNotEmpty && tipo == 'Video')
@@ -260,14 +276,43 @@ class _PerfilVistaState extends State<PerfilVista> {
   }
 
   Future<void> seleccionarImagen() async {
-    final picker = ImagePicker();
-    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.camera_alt),
+                title: const Text('Tomar foto'),
+                onTap: () => Navigator.pop(context, ImageSource.camera),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library),
+                title: const Text('Elegir de galeria'),
+                onTap: () => Navigator.pop(context, ImageSource.gallery),
+              ),
+            ],
+          ),
+        );
+      },
+    );
 
-    if (image != null) {
-      setState(() {
-        nuevaImagen = File(image.path);
-      });
+    if (source == null) {
+      return;
     }
+
+    final picker = ImagePicker();
+    final image = await picker.pickImage(source: source);
+
+    if (!mounted || image == null) {
+      return;
+    }
+
+    setState(() {
+      nuevaImagen = File(image.path);
+    });
   }
 
   Future<void> guardarPerfil() async {
@@ -294,6 +339,9 @@ class _PerfilVistaState extends State<PerfilVista> {
           'user': nombreController.text.trim(),
           'user_lower': nombreController.text.trim().toLowerCase(),
           'foto': foto,
+          'fecha_nacimiento': fechaNacimiento == null
+              ? null
+              : Timestamp.fromDate(fechaNacimiento!),
         });
 
     setState(() {
@@ -311,7 +359,7 @@ class _PerfilVistaState extends State<PerfilVista> {
   }
 
   Future<void> publicarFotoOVideo() async {
-    final descripcionController = TextEditingController();
+    String descripcion = '';
     String tipo = 'Foto';
 
     final resultado = await showDialog<Map<String, String>>(
@@ -324,9 +372,11 @@ class _PerfilVistaState extends State<PerfilVista> {
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  TextField(
-                    controller: descripcionController,
+                  TextFormField(
                     decoration: const InputDecoration(labelText: 'Descripcion'),
+                    onChanged: (value) {
+                      descripcion = value;
+                    },
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
@@ -353,7 +403,7 @@ class _PerfilVistaState extends State<PerfilVista> {
                 ElevatedButton(
                   onPressed: () {
                     Navigator.pop(context, {
-                      'descripcion': descripcionController.text.trim(),
+                      'descripcion': descripcion.trim(),
                       'tipo': tipo,
                     });
                   },
@@ -365,8 +415,6 @@ class _PerfilVistaState extends State<PerfilVista> {
         );
       },
     );
-
-    descripcionController.dispose();
 
     if (resultado == null) {
       return;
@@ -433,6 +481,51 @@ class _PerfilVistaState extends State<PerfilVista> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('Publicacion eliminada')));
+  }
+
+  Future<void> seleccionarFechaNacimiento() async {
+    final ahora = DateTime.now();
+    final fechaInicial = fechaNacimiento ?? DateTime(2000, 1, 1);
+
+    final fechaSeleccionada = await showDatePicker(
+      context: context,
+      initialDate: fechaInicial.isAfter(ahora) ? ahora : fechaInicial,
+      firstDate: DateTime(1900),
+      lastDate: ahora,
+    );
+
+    if (!mounted || fechaSeleccionada == null) {
+      return;
+    }
+
+    setState(() {
+      fechaNacimiento = fechaSeleccionada;
+    });
+  }
+
+  Future<void> abrirImagenGrande(String imageUrl) async {
+    await showDialog<void>(
+      context: context,
+      builder: (_) => Dialog(
+        insetPadding: const EdgeInsets.all(16),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: AspectRatio(
+            aspectRatio: 1,
+            child: InteractiveViewer(
+              minScale: 1,
+              maxScale: 4,
+              child: ImagenSegura(
+                imageUrl: imageUrl,
+                width: double.infinity,
+                fit: BoxFit.contain,
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Future<String?> subirArchivoACloudinary(File archivo, String tipo) async {

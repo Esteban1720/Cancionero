@@ -10,12 +10,16 @@ class SeguridadVista extends StatefulWidget {
 
 class _SeguridadVistaState extends State<SeguridadVista> {
   final TextEditingController passwordController = TextEditingController();
+  final TextEditingController confirmPasswordController =
+      TextEditingController();
   bool obscure = true;
+  bool obscureConfirm = true;
   bool loading = false;
 
   @override
   void dispose() {
     passwordController.dispose();
+    confirmPasswordController.dispose();
     super.dispose();
   }
 
@@ -38,6 +42,25 @@ class _SeguridadVistaState extends State<SeguridadVista> {
                   onPressed: () {
                     setState(() {
                       obscure = !obscure;
+                    });
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: confirmPasswordController,
+              obscureText: obscureConfirm,
+              decoration: InputDecoration(
+                labelText: 'Confirmar nueva contrasena',
+                prefixIcon: const Icon(Icons.lock_outline),
+                suffixIcon: IconButton(
+                  icon: Icon(
+                    obscureConfirm ? Icons.visibility_off : Icons.visibility,
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      obscureConfirm = !obscureConfirm;
                     });
                   },
                 ),
@@ -70,6 +93,20 @@ class _SeguridadVistaState extends State<SeguridadVista> {
       return;
     }
 
+    if (confirmPasswordController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Confirma la nueva contrasena')),
+      );
+      return;
+    }
+
+    if (passwordController.text.trim() != confirmPasswordController.text.trim()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Las contrasenas no coinciden')),
+      );
+      return;
+    }
+
     setState(() {
       loading = true;
     });
@@ -86,6 +123,8 @@ class _SeguridadVistaState extends State<SeguridadVista> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Contrasena actualizada')));
+      passwordController.clear();
+      confirmPasswordController.clear();
       Navigator.pop(context);
     } on FirebaseAuthException catch (e) {
       String mensaje = 'No se pudo cambiar la contrasena';
